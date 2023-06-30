@@ -51,7 +51,8 @@ app.use(session({
         console.log(result);
         console.log(result.length);
         if (result.length > 0) {
-          req.session.username = result[0].username;
+          const { username } = result[0];
+          req.session.username = username;
           console.log('req username at login',req.session.username);
           res.sendStatus(200);
         } else {
@@ -64,10 +65,12 @@ app.use(session({
   });
 app.get('/users', (req, res) => {
     console.log('enterd into home index');
-    console.log('username at req session',req.session.username);
+  const username = req.session.username;
   
-    if(req.session.username){
-      if(req.session.username!=='admin'){
+    console.log('username at req session',username);
+  
+    if(username){
+      if(username!=='admin'){
         const {username} = req.session.username;
         console.log('username at users list index',req.session.username);
         const userList = 'SELECT * FROM users WHERE username = ?';
