@@ -38,7 +38,30 @@ app.use(session({
     maxAge: 1000*60*60*24
   }//set the session cookie properties
 }))
-
+  app.post('/', (req, res) => {
+    const { username, password } = req.body;
+    console.log('entered login');
+  
+    const sqlLogin = 'SELECT * FROM users WHERE username = ? AND password = ?';
+    console.log('entered login');
+    db.query(sqlLogin, [username, password], (err, result) => {
+      if (err) {
+        console.log("error ", err);
+      } else {
+        console.log(result);
+        console.log(result.length);
+        if (result.length > 0) {
+          req.session.username = result[0].username;
+          console.log('req username at login',req.session.username);
+          res.sendStatus(200);
+        } else {
+          console.log('login unsuccessful');
+          res.status(401).send('Unauthorized');
+        }
+     
+      }
+    });
+  });
 app.get('/users', (req, res) => {
     console.log('enterd into home index');
     console.log('username at req session',req.session.username);
@@ -79,30 +102,7 @@ app.get('/users', (req, res) => {
     });
   });
   
-  app.post('/', (req, res) => {
-    const { username, password } = req.body;
-    console.log('entered login');
-  
-    const sqlLogin = 'SELECT * FROM users WHERE username = ? AND password = ?';
-    console.log('entered login');
-    db.query(sqlLogin, [username, password], (err, result) => {
-      if (err) {
-        console.log("error ", err);
-      } else {
-        console.log(result);
-        console.log(result.length);
-        if (result.length > 0) {
-          req.session.username = result[0].username;
-          console.log('req username at login',req.session.username);
-          res.sendStatus(200);
-        } else {
-          console.log('login unsuccessful');
-          res.status(401).send('Unauthorized');
-        }
-     
-      }
-    });
-  });
+
   
   
   app.delete('/user/:id/delete', (req, res) => {
