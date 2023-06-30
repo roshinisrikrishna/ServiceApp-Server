@@ -17,6 +17,7 @@ const db = mysql.createPool({
   database: process.env.DATABASE
 });
 
+let globalUsername = ''; // Declare a global variable to store the username
 
 app.use(cors({
   origin: "http://sample.trackman.in", // Updated origin value
@@ -38,77 +39,66 @@ app.use(session({
     maxAge: 1000*60*60*24
   }//set the session cookie properties
 }))
-  app.post('/', (req, res) => {
-    const { username, password } = req.body;
-    console.log('entered login');
-  
-    const sqlLogin = 'SELECT * FROM users WHERE username = ? AND password = ?';
-    console.log('entered login');
-    db.query(sqlLogin, [username, password], (err, result) => {
-      if (err) {
-        console.log("error ", err);
-      } else {
-        console.log(result);
-        console.log(result.length);
-        if (result.length > 0) {
-          const { username } = result[0];
-          req.session.username = username;
-          console.log('req username at login',req.session.username);
-          res.sendStatus(200);
-        } else {
-          console.log('login unsuccessful');
-          res.status(401).send('Unauthorized');
-        }
-     
-      }
-    });
-  });
-app.get('/users', (req, res) => {
-    console.log('enterd into home index');
-  const username = req.session.username;
-  
-    console.log('username at req session',username);
-  
-    if(username){
-      if(username!=='admin'){
-        const {username} = req.session.username;
-        console.log('username at users list index',req.session.username);
-        const userList = 'SELECT * FROM users WHERE username = ?';
-        db.query(userList,req.session.username, (err, result) => {
-    
-          res.send(result);
-        });
-      }
-      else{
-        const userList = 'SELECT * FROM users';
-        db.query(userList,(err, result) => {
-    
-          res.send(result);
-        });
-      }
-      
-    }
-   
-  });
-  
-  app.post('/users/create', (req, res) => {
-    const { username, password, email_id, designation } = req.body;
-    const sqlInsert = 'INSERT INTO users (id, username, password, email_id, designation) VALUES (?, ?, ?, ?, ?)';
-    const id = username.replace(/\s/g,'');
-    
-    // Function to generate random ID consisting of lowercase alphabetic characters
-     
-       db.query(sqlInsert, [id,username, password, email_id, designation], (error, result) => {
-      if (error) {
-        console.log(error);
-      }
-    });
-  });
-  
 
+app.post('/', (req, res) => {
+  const { username, password } = req.body;
+  console.log('entered login');
+
+  const sqlLogin = 'SELECT * FROM users WHERE username = ? AND password = ?';
+  console.log('entered login');
+  db.query(sqlLogin, [username, password], (err, result) => {
+    if (err) {
+      console.log("error ", err);
+    } else {
+      console.log(result);
+      console.log(result.length);
+      if (result.length > 0) {
+        const loggedInUser = result[0].username;
+        globalUsername = loggedInUser; // Assign the username to the global variable
+        req.session.username = loggedInUser;
+        console.log('req username at login',req.session.username);
+        res.sendStatus(200);
+      } else {
+        console.log('login unsuccessful');
+        res.status(401).send('Unauthorized');
+      }
+    }
+  });
+});
+
+app.get('/users', (req, res) => {
+  console.log('entered into home index');
+  console.log('username at req session', globalUsername); // Access the global variable for the username
   
+  if (globalUsername) {
+    if (globalUsername !== 'admin') {
+      console.log('username at users list index', globalUsername);
+      const userList = 'SELECT * FROM users WHERE username = ?';
+      db.query(userList, globalUsername, (err, result) => {
+        res.send(result);
+      });
+    } else {
+      const userList = 'SELECT * FROM users';
+      db.query(userList, (err, result) => {
+        res.send(result);
+      });
+    }
+  }
+});
+
+app.post('/users/create', (req, res) => {
+  const { username, password, email_id, designation } = req.body;
+  const sqlInsert = 'INSERT INTO users (id, username, password, email_id, designation) VALUES (?, ?, ?, ?, ?)';
+  const id = username.replace(/\s/g,'');
+
+  db.query(sqlInsert, [id,username, password, email_id, designation], (error, result) => {
+    if (error) {
+      console.log(error);
+    }
+  });
+});
   
-  app.delete('/user/:id/delete', (req, res) => {
+    app.delete('/user/:id/delete', (req, res) => {
     const { id } = req.params;
     const sqlDelete = 'DELETE FROM users WHERE id= ?';
     db.query(sqlDelete, id, (error, result) => {
