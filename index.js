@@ -32,7 +32,7 @@ app.use(cookieParser());
 app.use(session({
   secret: 'secret',// secret key to encrypt session cookie
   resave:false,
-  saveUninitialized:false,
+  saveUninitialized:true,
   cookie:{
     secure:false,
     maxAge: 1000*60*60*24
