@@ -19,7 +19,7 @@ const db = mysql.createPool({
 
 
 app.use(cors({
-  origin: "http://localhost:3000", // Updated origin value
+  origin: "http://sample.trackman.in", // Updated origin value
   methods: ["POST", "GET", "PUT", "DELETE"],
   credentials: true
 }));
