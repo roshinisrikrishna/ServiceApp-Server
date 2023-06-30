@@ -93,6 +93,7 @@ app.get('/users', (req, res) => {
         console.log(result.length);
         if (result.length > 0) {
           req.session.username = result[0].username;
+          console.log('req username at login',req.session.username);
           res.sendStatus(200);
         } else {
           console.log('login unsuccessful');
