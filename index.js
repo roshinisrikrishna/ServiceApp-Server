@@ -18,10 +18,10 @@ const db = mysql.createPool({
   database: process.env.DATABASE
 });
 const sessionStore = new MySQLStore({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
+  host: process.env.HOST,
+  user: process.env.USER,
+  password: process.env.PASSWORD,
+  database: process.env.DATABASE,
 });
 
 let globalUsername = ''; // Declare a global variable to store the username
@@ -77,13 +77,13 @@ app.post('/', (req, res) => {
 
 app.get('/users', (req, res) => {
   console.log('entered into home index');
-  console.log('username at req session', globalUsername); // Access the global variable for the username
+  console.log('username at req session', req.session.username);
   
-  if (globalUsername) {
-    if (globalUsername !== 'admin') {
-      console.log('username at users list index', globalUsername);
+  if (req.session.username) {
+    if (req.session.username !== 'admin') {
+      console.log('username at users list index', req.session.username);
       const userList = 'SELECT * FROM users WHERE username = ?';
-      db.query(userList, globalUsername, (err, result) => {
+      db.query(userList, req.session.username, (err, result) => {
         res.send(result);
       });
     } else {
