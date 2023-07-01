@@ -249,83 +249,86 @@ else
   });
   
   // Function to fetch data from the API and insert into the travel_log table
-  function fetchAndStoreData(userId,apiKey) {
-  
-    // console.log('apiKey',apiKey);
-    const apiUrl = `http://gpsvts.net/apiMobile/getVehicleLocations?userId=${userId}&apiKey=${apiKey}`;
-    // console.log('apiUrl',apiUrl);
-  
-    axios
-      .get(apiUrl)
-      .then((response) => {
-        const responseData = response.data;
-       
-        if (responseData && Array.isArray(responseData[0].vehicleLocations)) {
-            // console.log("responsedata parsing");
-          const vehicleLocations = responseData[0].vehicleLocations;
-  
-          // Iterate over the vehicleLocations array and extract the required information
-          for (const location of vehicleLocations) {
-            const { date, ignitionStatus, speed, address, odoDistance, vehicleId } = location;
-            
-            console.log('ignition status',ignitionStatus);
-            console.log('vehicleId ',vehicleId);
-            // Check the conditions to determine if it's a trip record
-            if (ignitionStatus === 'ON' && speed > 10) {
-              const start_time = new Date(date);
-              const initial_location = address;
-              const end_time = null;
-              const final_location = null;
-              const distance = 0;
-              const id=vehicleId;
-              console.log('address at igntion ON ',address);
-            // console.log("Ignition status check stage");
-              // Insert the trip record into the travel_log table
-              const query = `INSERT INTO travel_log (start_time, initial_location, end_time, final_location, distance, id, userId)
-                             VALUES (?, ?, ?, ?, ?, ?, ?)`;
-              const values = [start_time, initial_location, end_time, final_location, distance, id, userId];
-  
-              db.query(query, values, (error, results) => {
-                if (error) {
-                  console.error('Error inserting trip:',error);
+function fetchAndStoreData(userId, apiKey) {
+
+  const apiUrl = `http://gpsvts.net/apiMobile/getVehicleLocations?userId=${userId}&apiKey=${apiKey}`;
+
+  axios
+    .get(apiUrl)
+    .then((response) => {
+      const responseData = response.data;
+
+      if (responseData && Array.isArray(responseData[0].vehicleLocations)) {
+        const vehicleLocations = responseData[0].vehicleLocations;
+
+        // Iterate over the vehicleLocations array and extract the required information
+        for (const location of vehicleLocations) {
+          const { date, ignitionStatus, speed, address, odoDistance, vehicleId } = location;
+          console.log('ignition status', ignitionStatus);
+          console.log('vehicleId ', vehicleId);
+
+          // Check the conditions to determine if it's a trip record
+          if (ignitionStatus === 'ON' && speed > 10) {
+            const start_time = new Date(date);
+            const initial_location = address;
+            const end_time = null;
+            const final_location = null;
+            const distance = 0;
+            const id = vehicleId;
+            console.log('address at igntion ON ', address);
+
+            // Insert the trip record into the travel_log table
+            const query = `INSERT INTO travel_log (start_time, initial_location, end_time, final_location, distance, id, userId) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+            const values = [start_time, initial_location, end_time, final_location, distance, id, userId];
+
+            db.query(query, values, (error, results) => {
+              if (error) {
+                console.error('Error inserting trip:', error);
+              }
+            });
+          } else if (ignitionStatus === 'OFF') {
+            const end_time = new Date(date);
+            const final_location = address;
+            const distance = odoDistance;
+            const id = vehicleId;
+
+            const checkQuery = `SELECT start_time, initial_location FROM travel_log WHERE id = ? AND start_time IS NOT NULL ORDER BY start_time DESC LIMIT 1`;
+            const checkValues = [vehicleId];
+
+            db.query(checkQuery, checkValues, (error, results) => {
+              if (error) {
+                console.error('Error checking trip start:', error);
+              } else {
+                if (results && results.length > 0) {
+                  const { start_time, initial_location } = results[0];
+                  const query = `UPDATE travel_log SET end_time = ?, final_location = ?, distance = ? WHERE id = ? AND start_time = ? AND initial_location = ?`;
+                  const values = [end_time, final_location, distance, vehicleId, start_time, initial_location];
+
+                  db.query(query, values, (error, results) => {
+                    if (error) {
+                      console.error('Error updating trip:', error);
+                    }
+                  });
+                } else {
+                  const query = `INSERT INTO travel_log (start_time, initial_location, end_time, final_location, distance, id, userId) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+                  const values = [null, null, end_time, final_location, distance, vehicleId, userId];
+
+                  db.query(query, values, (error, results) => {
+                    if (error) {
+                      console.error('Error inserting trip:', error);
+                    }
+                  });
                 }
-                // console.log('dbQuery stage');
-  
-              });
-            } else if (ignitionStatus === 'OFF') {
-                // console.log(" ignition false stage")
-              // Update the previously inserted trip record with the end time, final location, and distance
-              // console.log("Ignition off check stage");
-              const start_time = null;
-              const initial_location = null;
-              const end_time=new Date(date);
-              const final_location = address;
-              const distance = odoDistance;
-              const id=vehicleId;
-  
-              const query = `INSERT INTO travel_log (start_time, initial_location, end_time, final_location, distance, id, userId)
-                             VALUES (?, ?, ?, ?, ?, ?, ?)`;
-              const values = [start_time, initial_location, end_time, final_location, distance, id, userId];
-  
-              // const query = `UPDATE travel_log
-              //                SET end_time = ?, final_location = ?, distance = ?
-              //                WHERE id = ? AND end_time IS NULL`;
-              // const values = [end_time, final_location, calculateDistance(0, odoDistance), id];
-            // console.log(values);
-              db.query(query, values, (error, results) => {
-                if (error) {
-                  console.error('Error updating trip:');
-                }
-                // console.log("dbQuery ignition false stage");
-              });
-            }
+              }
+            });
           }
         }
-      })
-      .catch((error) => {
-        console.error('Error fetching data:');
-      });
-  }
+      }
+    })
+    .catch((error) => {
+      console.error('Error fetching data:', error);
+    });
+}
   
   // Schedule the data fetching and storing process to run every hour (adjust as needed)
   // Start the server
