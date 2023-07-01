@@ -254,6 +254,7 @@ else
 function fetchAndStoreData(userId, apiKey) {
 
   const apiUrl = `http://gpsvts.net/apiMobile/getVehicleLocations?userId=${userId}&apiKey=${apiKey}`;
+  console.log('apiUrl at travel',apiUrl);
 
   axios
     .get(apiUrl)
