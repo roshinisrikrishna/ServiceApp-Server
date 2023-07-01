@@ -9,12 +9,19 @@ import mysql from'mysql2';
 import axios from'axios';
 import session from'express-session';
 import cookieParser from'cookie-parser';
+import MySQLStore from 'express-mysql-session';
 
 const db = mysql.createPool({
   host: process.env.HOST,
   user: process.env.USER,
   password: process.env.PASSWORD,
   database: process.env.DATABASE
+});
+const sessionStore = new MySQLStore({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
 });
 
 let globalUsername = ''; // Declare a global variable to store the username
@@ -36,9 +43,11 @@ app.use(session({
   saveUninitialized:true,
   cookie:{
     secure:false,
-    maxAge: 1000*60*60*24
-  }//set the session cookie properties
-}))
+    maxAge: 1000 * 60 * 60 * 24
+  },
+    store: sessionStore;
+  //set the session cookie properties
+}));
 
 app.post('/', (req, res) => {
   const { username, password } = req.body;
@@ -54,7 +63,7 @@ app.post('/', (req, res) => {
       console.log(result.length);
       if (result.length > 0) {
         const loggedInUser = result[0].username;
-        globalUsername = loggedInUser; // Assign the username to the global variable
+        // globalUsername = loggedInUser; // Assign the username to the global variable
         req.session.username = loggedInUser;
         console.log('req username at login',req.session.username);
         res.sendStatus(200);
