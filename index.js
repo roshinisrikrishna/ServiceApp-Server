@@ -157,8 +157,9 @@ app.post('/users/create', (req, res) => {
       } else {
         // Prepare the trip summary data
         const tripSummaryData = results.map((trip) => {
-          const { start_time, initial_location, end_time, final_location, distance } = trip;
+          const { id, start_time, initial_location, end_time, final_location, distance } = trip;
           return {
+            id,
             start_time: formatDate(start_time),
             initial_location,
             end_time: formatDate(end_time),
@@ -183,8 +184,9 @@ app.post('/users/create', (req, res) => {
       } else {
         // Prepare the trip summary data
         const tripSummaryData = results.map((trip) => {
-          const { start_time, initial_location, end_time, final_location, distance, userId} = trip;
+          const { id, start_time, initial_location, end_time, final_location, distance, userId} = trip;
           return {
+            id,
             start_time: formatDate(start_time),
             initial_location,
             end_time: formatDate(end_time),
