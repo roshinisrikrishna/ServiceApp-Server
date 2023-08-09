@@ -9,18 +9,20 @@ import mysql from'mysql2';
 import axios from'axios';
 import session from'express-session';
 import cookieParser from'cookie-parser';
+import fetch from'node-fetch';
+
 
 const db = mysql.createPool({
-  host: process.env.HOST,
-  user: process.env.USER,
-  password: process.env.PASSWORD,
-  database: process.env.DATABASE
+  host: "localhost",
+  user: "root",
+  password: "root",
+  database: "samplecourierdb"
 });
 
 let globalUsername = ''; // Declare a global variable to store the username
 
 app.use(cors({
-  origin: "http://sample.trackman.in", // Updated origin value
+  origin: "http://localhost:3000", // Updated origin value
   methods: ["POST", "GET", "PUT", "DELETE"],
   credentials: true
 }));
@@ -83,10 +85,11 @@ app.get('/users', (req, res) => {
         res.send(result);
       });
     }
-  }
+ }
 });
 
 app.post('/users/create', (req, res) => {
+  console.log('entered users create server');
   const { username, password, email_id, designation } = req.body;
   const sqlInsert = 'INSERT INTO users (id, username, password, email_id, designation) VALUES (?, ?, ?, ?, ?)';
   const id = username.replace(/\s/g,'');
@@ -95,6 +98,7 @@ app.post('/users/create', (req, res) => {
     if (error) {
       console.log(error);
     }
+    console.log('created result ',result);
   });
 });
   
@@ -147,17 +151,17 @@ app.post('/users/create', (req, res) => {
     return date.toISOString().slice(0, 19).replace('T', ' ');
   }
   
-  // Function to fetch data from the travel_log table and generate trip summary report
+  // Function to fetch data from the travel_log2 table and generate trip summary report
   function generateTripSummaryReportByUser(res,userId) {
-    const query = `SELECT * FROM travel_log WHERE userId = ? ORDER BY start_time ASC`;
+    const query = `SELECT * FROM travel_log2 WHERE userId = ? AND start_time IS NOT NULL AND initial_location IS NOT NULL AND end_time IS NOT NULL AND final_location IS NOT NULL ORDER BY start_time ASC`;
     db.query(query, userId, (err, results) => {
       if (err) {
-        console.log('error');
+        // console.log('error');
         res.status(500).send('Internal Server Error');
       } else {
         // Prepare the trip summary data
         const tripSummaryData = results.map((trip) => {
-          const { id, start_time, initial_location, end_time, final_location, distance } = trip;
+          const { id, start_time, initial_location, end_time, final_location, distance, userId, fuelLitre, mileage} = trip;
           return {
             id,
             start_time: formatDate(start_time),
@@ -166,6 +170,8 @@ app.post('/users/create', (req, res) => {
             final_location,
             distance,
             userId,
+            fuelLitre,
+            mileage
           };
         });
         // console.log('tripSummaryData ',tripSummaryData);
@@ -176,7 +182,7 @@ app.post('/users/create', (req, res) => {
 
   //for admin
   function generateTripSummaryReport(res) {
-    const query = `SELECT * FROM travel_log ORDER BY start_time ASC`;
+    const query = `SELECT * FROM travel_log2 WHERE start_time IS NOT NULL AND initial_location IS NOT NULL AND end_time IS NOT NULL AND final_location IS NOT NULL ORDER BY start_time ASC`;
     db.query(query, (err, results) => {
       if (err) {
         console.log('error');
@@ -184,7 +190,7 @@ app.post('/users/create', (req, res) => {
       } else {
         // Prepare the trip summary data
         const tripSummaryData = results.map((trip) => {
-          const { id, start_time, initial_location, end_time, final_location, distance, userId} = trip;
+          const { id, start_time, initial_location, end_time, final_location, distance, userId, fuelLitre, mileage} = trip;
           return {
             id,
             start_time: formatDate(start_time),
@@ -192,7 +198,10 @@ app.post('/users/create', (req, res) => {
             end_time: formatDate(end_time),
             final_location,
             distance,
-            userId
+            userId,
+            fuelLitre,
+            mileage
+
           };
         });
         // console.log('tripSummaryData ',tripSummaryData);
@@ -204,39 +213,40 @@ app.post('/users/create', (req, res) => {
   // API endpoint to fetch trip summary report for a specific user
   app.get('/travel/:userId', (req, res) => {
     const { userId } = req.params;
-    if(userId!=='admin'){
-    const travelList = 'SELECT * FROM travel_log WHERE userId = ?';
-    db.query(travelList, userId, (err, result) => {
-      if (err) {
-        console.log('Error fetching travel data:', err);
-        res.status(500).send('Internal Server Error');
-      } else {
-        generateTripSummaryReportByUser(res, userId);
-        // res.send(result);
-      }
-    });
-}
-else
-{
-    const travelList = 'SELECT * FROM travel_log';
-    db.query(travelList, (err, result) => {
-      if (err) {
-        console.log('Error fetching travel data:', err);
-        res.status(500).send('Internal Server Error');
-      } else {
-        generateTripSummaryReport(res);
-        // res.send(result);
-      }
-    });
-
-}
+  
+    if (userId !== 'admin') {
+      const travelList = 'SELECT * FROM travel_log2 WHERE userId = ? AND start_time IS NOT NULL AND initial_location IS NOT NULL AND end_time IS NOT NULL AND final_location IS NOT NULL';
+  
+      db.query(travelList, userId, (err, result) => {
+        if (err) {
+          console.log('Error fetching travel data:', err);
+          res.status(500).send('Internal Server Error');
+        } else {
+          // console.log('result ', result);
+          generateTripSummaryReportByUser(res, userId);
+        }
+      });
+    } else {
+      const travelList = 'SELECT * FROM travel_log2 WHERE start_time IS NOT NULL AND initial_location IS NOT NULL AND end_time IS NOT NULL AND final_location IS NOT NULL';
+  
+      db.query(travelList, (err, result) => {
+        if (err) {
+          console.log('Error fetching travel data:', err);
+          res.status(500).send('Internal Server Error');
+        } else {
+          // console.log('result ', result);
+          generateTripSummaryReport(res);
+        }
+      });
+    }
   });
+  
   
   const getUsersQuery = `SELECT id, apiKey FROM users`;
   
   db.query(getUsersQuery, (err, results) => {
     if (err) {
-      console.error('Error fetching user IDs:', err);
+      // console.error('Error fetching user IDs:', err);
     } else {
       if (results && results.length > 0) {
         // Iterate over the user IDs and call fetchAndStoreData function for each ID
@@ -250,93 +260,145 @@ else
     }
   });
   
-  // Function to fetch data from the API and insert into the travel_log table
-function fetchAndStoreData(userId, apiKey) {
+  // let flag = false;
+  // let previousRecordExists;
+  // let previousStartLocation;
+  // let previousDistance;
+  // let previousFuelConsumed;
+  const vehicleData = {};
 
-  const apiUrl = `http://gpsvts.net/apiMobile/getVehicleLocations?userId=${userId}&apiKey=${apiKey}`;
-  console.log('apiUrl at travel',apiUrl);
-
-  axios
-    .get(apiUrl)
-    .then((response) => {
-      const responseData = response.data;
-
-      if (responseData && Array.isArray(responseData[0].vehicleLocations)) {
-        const vehicleLocations = responseData[0].vehicleLocations;
-
-        // Iterate over the vehicleLocations array and extract the required information
-        for (const location of vehicleLocations) {
-          const { date, ignitionStatus, speed, address, odoDistance, vehicleId } = location;
-          console.log('ignition status', ignitionStatus);
-          console.log('vehicleId ', vehicleId);
-
-          // Check the conditions to determine if it's a trip record
-          if (ignitionStatus === 'ON' && speed > 10) {
+  
+  // Function to fetch data from the API and insert into the travel_log2 table
+  function fetchAndStoreData(userId) {
+    const query = `SELECT * FROM vehicle_data WHERE orgId LIKE ?`;
+    const userIdParam = `${userId.toUpperCase()}`;
+  
+    db.query(query, [userIdParam], (error, results) => {
+      if (error) {
+        console.error('Error fetching data:', error);
+      } else {
+        for (const location of results) {
+          const {
+            date,
+            ignitionStatus,
+            speed,
+            address,
+            distanceCovered,
+            vehicleId,
+            fuelLitre,
+          } = location;
+  
+          if (!vehicleData[vehicleId]) {
+            // Initialize data for a new vehicle
+            vehicleData[vehicleId] = {
+              flag: false,
+              previousRecordExists: false,
+              previousStartLocation: null,
+              previousDistance: 0,
+              previousFuelConsumed: 0,
+              previousEvent: null,
+            };
+          }
+  
+          const {
+            flag,
+            previousRecordExists,
+            previousStartLocation,
+            previousDistance,
+            previousFuelConsumed,
+            previousEvent,
+          } = vehicleData[vehicleId];
+  
+          if (ignitionStatus === 'ON' && speed > 10 && !vehicleData[vehicleId].flag) {
+            // Entered ignitionOn condition
+  
             const start_time = new Date(date);
             const initial_location = address;
             const end_time = null;
             const final_location = null;
-            const distance = 0;
+            const distance = distanceCovered;
+            const fuel = fuelLitre;
             const id = vehicleId;
-            console.log('address at igntion ON ', address);
-
-            // Insert the trip record into the travel_log table
-            const query = `INSERT INTO travel_log (start_time, initial_location, end_time, final_location, distance, id, userId) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-            const values = [start_time, initial_location, end_time, final_location, distance, id, userId];
-
-            db.query(query, values, (error, results) => {
+            const mileage = fuel !== 0 ? distance / fuel : 0;
+  
+            console.log("");
+            console.log('id at ON', vehicleId);
+            console.log("start time ", start_time);
+            console.log('vehicle data array at ON ', vehicleData[vehicleId]);
+            console.log('flag at ON should be FALSE', vehicleData[vehicleId].flag);
+            console.log('address at ignition ON', address);
+            console.log('fuel at ON ', fuel);
+  
+            // Insert the trip record into the travel_log2 table
+            const insertQuery = `INSERT INTO travel_log2 (start_time, initial_location, end_time, final_location, distance, id, userId, unique_id, fuelLitre, mileage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            const insertValues = [start_time, initial_location, end_time, final_location, distance, id, userId, null, fuel, mileage];
+  
+            db.query(insertQuery, insertValues, (error, results) => {
               if (error) {
                 console.error('Error inserting trip:', error);
               }
             });
-          } else if (ignitionStatus === 'OFF') {
+            vehicleData[vehicleId].flag = true;
+            vehicleData[vehicleId].previousRecordExists = true;
+            vehicleData[vehicleId].previousStartLocation = initial_location;
+            vehicleData[vehicleId].previousDistance = distance;
+            vehicleData[vehicleId].previousFuelConsumed = fuel;
+          } else if (ignitionStatus === 'OFF' && vehicleData[vehicleId].flag) {
+            // Entered ignitionOff condition
             const end_time = new Date(date);
             const final_location = address;
-            const distance = odoDistance;
+            const distance = distanceCovered - vehicleData[vehicleId].previousDistance;
+            const fuel = vehicleData[vehicleId].previousFuelConsumed > fuelLitre? vehicleData[vehicleId].previousFuelConsumed - fuelLitre : fuelLitre - vehicleData[vehicleId].previousFuelConsumed;
+            const mileage = fuel !== 0 ? distance / fuel : 0;
             const id = vehicleId;
+  
+            console.log("");
+            console.log('id at OFF ', vehicleId);
+            console.log("end_time ", end_time);
+            console.log('vehicle data array at OFF ', vehicleData[vehicleId]);
+            console.log('flag at OFF should be true', vehicleData[vehicleId].flag);
 
-            const checkQuery = `SELECT start_time, initial_location FROM travel_log WHERE id = ? AND start_time IS NOT NULL ORDER BY start_time DESC LIMIT 1`;
-            const checkValues = [vehicleId];
+            console.log('address at ignition OFF', address);
+            console.log('fuel at OFF ', fuelLitre);
+            console.log('CALCULATED FUEL ',fuel );
 
-            db.query(checkQuery, checkValues, (error, results) => {
+  
+            vehicleData[vehicleId].flag = false;
+            vehicleData[vehicleId].previousEvent = 'OFF';
+  
+            const updateQuery = `UPDATE travel_log2 SET end_time = ?, final_location = ?, distance = ?, fuelLitre = ?, mileage = ? WHERE id = ? AND start_time IS NOT NULL AND initial_location = ?`;
+            const updateValues = [end_time, final_location, distance, fuel, mileage, vehicleId, previousStartLocation];
+  
+            db.query(updateQuery, updateValues, (error, results) => {
               if (error) {
-                console.error('Error checking trip start:', error);
-              } else {
-                if (results && results.length > 0) {
-                  const { start_time, initial_location } = results[0];
-                  const query = `UPDATE travel_log SET end_time = ?, final_location = ?, distance = ? WHERE id = ? AND start_time = ? AND initial_location = ?`;
-                  const values = [end_time, final_location, distance, vehicleId, start_time, initial_location];
-
-                  db.query(query, values, (error, results) => {
-                    if (error) {
-                      console.error('Error updating trip:', error);
-                    }
-                  });
-                } else {
-                  const query = `INSERT INTO travel_log (start_time, initial_location, end_time, final_location, distance, id, userId) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-                  const values = [null, null, end_time, final_location, distance, vehicleId, userId];
-
-                  db.query(query, values, (error, results) => {
-                    if (error) {
-                      console.error('Error inserting trip:', error);
-                    }
-                  });
-                }
+                console.error('Error updating trip:', error);
               }
             });
+  
+            vehicleData[vehicleId].previousRecordExists = false;
+            vehicleData[vehicleId].previousStartLocation = null;
+            vehicleData[vehicleId].previousDistance = 0;
+            vehicleData[vehicleId].previousFuelConsumed = 0;
           }
         }
+  
+        // This block will be executed once all data has been processed
+        console.log("All data in the vehicle_data table has been processed.");
       }
-    })
-    .catch((error) => {
-      console.error('Error fetching data:', error);
     });
-}
+  }
   
   // Schedule the data fetching and storing process to run every hour (adjust as needed)
   // Start the server
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log('Server running on port 5000');
-  });
+});
+  
+ 
+  
+  
+  
+  
+  
   
