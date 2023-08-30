@@ -1,6 +1,9 @@
-import mysql from'mysql2';
+//This file contains all the function definitions of user
 
+// Import necessary module
+import mysql from 'mysql2'; // MySQL database driver
 
+// Create a MySQL database connection pool
 const db = mysql.createPool({
     host: "localhost",
     user: "root",
@@ -8,19 +11,26 @@ const db = mysql.createPool({
     database: "samplecourierdb"
   });
   
+/* Declare a global variable to store the username got from login and continue 
+username to all other functions */
   let globalUsername = ''; 
 
+// Define user-related controller functions
   const users = {
-    login : (req,res) =>{
+    // Controller function for user login
+  login: (req, res) => {
         const { username, password } = req.body;
         
+// SQL query to check user credentials - username & password
         const sqlLogin = 'SELECT * FROM users WHERE username = ? AND password = ?';
         
+//pass username & password as parameter to query
         db.query(sqlLogin, [username, password], (err, result) => {
           if (err) {
             console.log("error ", err);
             res.status(500).send('Internal Server Error');
           } else {
+//login returned correct result only if it is > 0
             if (result.length > 0) {
               const loggedInUser = result[0];
               const loggedInUserId = loggedInUser.id;
@@ -38,11 +48,14 @@ const db = mysql.createPool({
           }
         });
     },
-    userList: (req,res)=>{
+    // Controller function to fetch user list - all users
+  userList: (req, res) => {
         console.log('entered into home index');
     console.log('username at req session', globalUsername); // Access the global variable for the username
     
     if (globalUsername) {
+
+      //check if logged-in user is not admin and return only that particular user details
       if (globalUsername !== 'admin') {
         console.log('username at users list index', globalUsername);
         const userList = 'SELECT * FROM users WHERE username = ?';
@@ -50,6 +63,8 @@ const db = mysql.createPool({
           res.send(result);
         });
       } else {
+//check if logged-in user is admin and return all user details
+
         const userList = 'SELECT * FROM users';
         db.query(userList, (err, result) => {
           res.send(result);
@@ -57,7 +72,10 @@ const db = mysql.createPool({
       }
    }
     },
-    forgotPassword: async(req,res)=>{
+    // Controller function for initiating forgot password
+  /* this is to notify admin the list of users who have requested for password change by admin
+  which is notified when user clicks forgot password */
+  forgotPassword: async (req, res) => {
         try {
             const { username } = req.body;
         
@@ -72,44 +90,59 @@ const db = mysql.createPool({
             res.status(500).json({ status: 'error', message: 'Internal server error' });
           }
     },
+// Controller function to create a new user
     create: (req, res) => {
         console.log('entered users create server');
+
+    //pass username, password, email, designation as user details
         const { username, password, email_id, designation } = req.body;
         const sqlInsert = 'INSERT INTO users (id, username, password, email_id, designation) VALUES (?, ?, ?, ?, ?)';
-        const id = username.replace(/\s/g,'');
+        const id = username.replace(/\s/g, '');//trim the whitespace in username to store as id
       
-        db.query(sqlInsert, [id,username, password, email_id, designation], (error, result) => {
+        //pass the values as input arguments
+    db.query(sqlInsert, [id, username, password, email_id, designation], (error, result) => {
           if (error) {
             console.log(error);
           }
-          console.log('created result ',result);
+          console.log('created result ', result);
         });
       },
-      getOne : (req, res) => {
-        const { id } = req.params;
-        console.log('viewing',id);
+      // Controller function to fetch a specific user
+  getOne: (req, res) => {
+        const { id } = req.params; //get id from parameter url
+        console.log('viewing', id);
         const userGet = 'SELECT * FROM users WHERE id = ?';
+
+    //pass id as input argument to sql
         db.query(userGet, id, (err, result) => {
           if (err) {
             console.log(err);
           }
-          console.log('result server',result);
+          console.log('result server', result);
           res.send(result);
         });
       },
-      delete : (req, res) => {
-        const { id } = req.params;
+      // Controller function to delete a user
+  delete: (req, res) => {
+        const { id } = req.params;//get id from parameter url
         const sqlDelete = 'DELETE FROM users WHERE id= ?';
+
+        //pass id as input argument to sql
         db.query(sqlDelete, id, (error, result) => {
           if (error) {
             console.log(error);
           }
         });
       },
+// Controller function to edit/update a user
       edit: (req, res) => {
-        const { id } = req.params;
+        const { id } = req.params;//get id from parameter url
+
+    //pass username, password, email, designation as user details
         const { username, password, email_id, designation } = req.body;
         const userUpdate = 'UPDATE users SET username = ?, password = ?, email_id = ?, designation = ?, reset_password = ?  WHERE id = ?';
+
+    //pass the values as input arguments into sql
         db.query(userUpdate, [username, password, email_id, designation, 0, id], (error, result) => {
           if (error) {
             console.log(error);
@@ -119,5 +152,4 @@ const db = mysql.createPool({
       }
   };
 
-
-export default users;
+export default users; // Export the users controller
