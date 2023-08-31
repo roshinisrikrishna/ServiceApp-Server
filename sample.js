@@ -41,7 +41,6 @@ app.use(session({
   }
 }));
 
-// Define routes for handling user and travel-related requests
 
 //user- login, get details of user based on id, edit user
 app.use('/user', userRoute); // Route handling user-related requests
@@ -53,5 +52,5 @@ app.use('/travel', travelRoute); // Route handling travel-related requests
 const PORT = process.env.PORT || 5001; // Use the provided port or default to 5000
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`); // Log a message when the server starts
+  console.log('Server running on port 5001'); // Log a message when the server starts
 });
