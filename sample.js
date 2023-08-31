@@ -41,7 +41,111 @@ app.use(session({
   }
 }));
 
-// Define routes for handling user and travel-related requests
+setInterval(() => fetchAndStoreData(), 30000);
+
+const vehicleData = {};
+
+function fetchAndStoreData() {
+
+  const query = `SELECT * FROM vehicle_data_sgrmc`;
+
+  db.query(query, (error, results) => {
+    if (error) {
+      console.error('Error fetching data:', error);
+    } else {
+    
+      for (const location of results) {
+        const {
+          date,
+          speed,
+          vehicleId,
+          fuelLitre,
+          digitalInput3
+        } = location;
+
+        if (!vehicleData[vehicleId]) {
+  
+          vehicleData[vehicleId] = {
+            flag: false,
+            previousRecordExists: false,
+            previousFuelConsumed: 0,
+            previousEvent: null,
+          };
+        }
+
+        const {
+          flag,
+          previousRecordExists,
+          previousFuelConsumed,
+          previousEvent,
+        } = vehicleData[vehicleId];
+
+      
+        if (digitalInput3 === 'yes' && speed === 0 && !vehicleData[vehicleId].flag) {
+          
+          const start_time = new Date(date);
+          const initial_fuel = fuelLitre;
+          const end_time = null;
+          const final_fuel = 0;
+          const fuelFilled = 0;
+          const id = vehicleId;
+          console.log('initial fuel ',initial_fuel);
+          console.log('id ',vehicleId);
+          const insertQuery = `INSERT INTO fuelFillLog (start_time, initial_fuel, end_time, final_fuel, vehicleId, fuelFilled) VALUES (?, ?, ?, ?, ?, ?)`;
+          const insertValues = [start_time, initial_fuel, end_time, final_fuel, id, fuelFilled];
+
+          //pass the insertValues containing values passing as input argument
+          db.query(insertQuery, insertValues, (error, results) => {
+            if (error) {
+              console.error('Error inserting trip:', error);
+            }
+          });
+
+          vehicleData[vehicleId].flag = true;
+          vehicleData[vehicleId].previousRecordExists = true;
+          vehicleData[vehicleId].previousFuelConsumed = fuelLitre;
+        } 
+        
+        else if (digitalInput3 === 'no' && vehicleData[vehicleId].flag) {
+      
+          const end_time = new Date(date);
+          const final_fuel = fuelLitre;
+          const fuelrefill = fuelLitre - vehicleData[vehicleId].previousFuelConsumed;
+          const id = vehicleId;
+
+          console.log("initial fuel ",vehicleData[vehicleId].previousFuelConsumed);
+          console.log("final fuel ", fuelLitre);
+          console.log("fuel filled ",fuelrefill)
+          console.log('id ',vehicleId);
+
+
+          vehicleData[vehicleId].flag = false;
+          vehicleData[vehicleId].previousEvent = 'OFF';
+
+          console.log("fuel filled again",fuelrefill)
+
+
+          const updateQuery = `UPDATE fuelFillLog SET end_time = ?, final_fuel = ?, fuelFilled = ? WHERE vehicleId = ? AND start_time IS NOT NULL`;
+          const updateValues = [end_time, fuelLitre, fuelrefill, vehicleId];
+
+          db.query(updateQuery, updateValues, (error, results) => {
+            if (error) {
+              console.error('Error updating trip:', error);
+            }
+          });
+
+          // Reset vehicle data values
+          vehicleData[vehicleId].previousRecordExists = false;
+          vehicleData[vehicleId].previousFuelConsumed = 0;
+        }
+      }
+
+      // This block will be executed once all data has been processed
+      // console.log("vehicle data ",vehicleData);
+      console.log("All data in the vehicle_data table has been processed.");
+    }
+  });
+}
 
 //user- login, get details of user based on id, edit user
 app.use('/user', userRoute); // Route handling user-related requests
@@ -53,5 +157,5 @@ app.use('/travel', travelRoute); // Route handling travel-related requests
 const PORT = process.env.PORT || 5001; // Use the provided port or default to 5000
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`); // Log a message when the server starts
+  console.log('Server running on port 5001'); // Log a message when the server starts
 });
