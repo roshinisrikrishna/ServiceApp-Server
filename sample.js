@@ -41,7 +41,6 @@ app.use(session({
   }
 }));
 
-
 //user- login, get details of user based on id, edit user
 app.use('/user', userRoute); // Route handling user-related requests
 
