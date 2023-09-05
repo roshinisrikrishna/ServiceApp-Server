@@ -19,6 +19,8 @@ const db = mysql.createPool({
 // Define a route to fetch fuel fill data based on fuelFill signal
 router.route("/fuelFill").get(travels.fuelTable);
 
+router.route("/fuelTheft").get(travels.fuelTheft);
+
 // Define a route to fetch trip data based on user ID or for all users (admin)
 router.route('/:userId').get(travels.travelTable);
         
