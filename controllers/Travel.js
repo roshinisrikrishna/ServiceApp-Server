@@ -80,9 +80,21 @@ const db = mysql.createPool({
     fuelTable: (req, res) => {
         const vehicleData = {};
       
-        // Query to fetch data from vehicle_data_sgrmc table
-        const query = `SELECT * FROM vehicle_data_sgrmc`;
-      
+// Calculate the date 48 hours ago from the current date
+const fortyEightHoursAgo = new Date();
+fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
+
+// Format the date in MySQL datetime format (assuming your `date` column is in DATETIME format)
+const changedDate = fortyEightHoursAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+// Convert `changedDate` into epoch time in milliseconds
+const epochTimeMilliseconds = Date.parse(changedDate);
+
+console.log('changed date', changedDate);
+console.log('Epoch time in milliseconds:', epochTimeMilliseconds);
+// Query to fetch data from vehicle_data_sgrmc for the past 48 hours
+const query = `SELECT * FROM vehicle_data_sgrmc WHERE date >= '${epochTimeMilliseconds}'`;
+      // console.log('changed date',changedDate);
         // Fetch data from the database
         db.query(query, (error, results) => {
           if (error) {
@@ -106,6 +118,7 @@ const db = mysql.createPool({
                   previousStartTime: null,
                   previousFuelConsumed: 0,
                   finalFuelRecorded: 0,
+                  count:0
                   // previousEvent: null,
                 };
               }
@@ -117,6 +130,7 @@ const db = mysql.createPool({
                 previousStartTime,
                 previousFuelConsumed,
                 finalFuelRecorded,
+                count
                 // previousEvent,
               } = vehicleData[vehicleId];
       
@@ -145,7 +159,9 @@ const db = mysql.createPool({
                 vehicleData[vehicleId].previousRecordExists = true;
                 vehicleData[vehicleId].previousStartTime = start_time;
                 vehicleData[vehicleId].previousFuelConsumed = fuelLitre;
-vehicleData[vehicleId].finalFuelRecorded = 0;
+                vehicleData[vehicleId].finalFuelRecorded = 0;
+                vehicleData[vehicleId].count = 0;
+
 
               } 
               // Check if digitalInput3 is 'no' and flag is true to detect fuel fill end
@@ -154,12 +170,19 @@ vehicleData[vehicleId].finalFuelRecorded = 0;
 
       
                 console.log("fuel compare ", fuelLitre)
-                if(fuelLitre>=vehicleData[vehicleId].finalFuelRecorded)
+                console.log("vehicle id ",vehicleId);
+
+                if(fuelLitre>=vehicleData[vehicleId].finalFuelRecorded && vehicleData[vehicleId].count < 3)
                 {
                   console.log("final fuel compare ", vehicleData[vehicleId].finalFuelRecorded)
 
                   vehicleData[vehicleId].finalFuelRecorded = fuelLitre;
                   console.log("fuel again compare ", vehicleData[vehicleId].finalFuelRecorded)
+                  
+                  if(fuelLitre==vehicleData[vehicleId].finalFuelRecorded){
+                    vehicleData[vehicleId].count = vehicleData[vehicleId].count + 1;
+
+                  }
 
                 }
                 else{
@@ -187,12 +210,7 @@ vehicleData[vehicleId].finalFuelRecorded = 0;
                 vehicleData[vehicleId].previousFuelConsumed = 0;
 
                 }
-      
-               
-
-                
-
-             
+           
               }
             }
 
@@ -200,24 +218,30 @@ vehicleData[vehicleId].finalFuelRecorded = 0;
       
             // This block will be executed once all data has been processed
             
-            const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1); // Yesterday's date
-    const today = new Date();
+    //         const now = new Date();
+    // const yesterday = new Date(now);
+    // yesterday.setDate(now.getDate() - 1); // Yesterday's date
+    // const today = new Date();
     
-    // Convert the dates to MySQL date format (YYYY-MM-DD)
-    const yesterdayDate = yesterday.toISOString().slice(0, 10);
-    const todayDate = today.toISOString().slice(0, 10);
+    // // Convert the dates to MySQL date format (YYYY-MM-DD)
+    // const yesterdayDate = yesterday.toISOString().slice(0, 10);
+    // const todayDate = today.toISOString().slice(0, 10);
     
     // Modify the SQL query to filter records with start_time between yesterday and today
             
-    let noDataFound = true; // Flag to track if any data is found
+    
+            console.log("All data in the vehicle_data table has been processed.");
 
-            const fuelList = `SELECT * FROM fuelFillLog WHERE start_time >= '${yesterdayDate}'`;
+            setTimeout(() => {
+
+            let noDataFound = true; // Flag to track if any data is found
+
+            const fuelList = `SELECT * FROM fuelFillLog`;
             // const fuelList = `SELECT * FROM fuelFillLog `;
 
             db.query(fuelList, (err, result) => {
               const fuelData = result; // Assuming this contains the fuel data
+
 
               console.log("vehicle data ",result);
               if (result.length > 0) {
@@ -226,7 +250,6 @@ vehicleData[vehicleId].finalFuelRecorded = 0;
 
                 noDataFound = false;
           
-                // ... Your previous code to construct the table rows ...
               }
             
               // Create an object to store fuel data by vehicleId
@@ -294,7 +317,7 @@ emailContent += '</body></html>';
             }
             else
             {
-              emailContent+= `<h2>No vehicle has filled the fuel on '${yesterdayDate}'</h2>`;
+              emailContent+= `<h2>No vehicle has filled the fuel on '${changedDate}'</h2>`;
               emailContent += '</body></html>';
 
             }
@@ -332,17 +355,30 @@ emailContent += '</body></html>';
             
             // });
             });      
+          }, 6000); // Delay for 6000 milliseconds (6 seconds)
 
-            console.log("All data in the vehicle_data table has been processed.");
           }
+          
         });
 
     },
     fuelTheft: (req, res) => {
       const vehicleData = {};
-    
-      // Query to fetch data from vehicle_data_sgrmc table
-      const query = `SELECT * FROM vehicle_data_sgrmc` ;
+
+    // Calculate the date 48 hours ago from the current date
+const fortyEightHoursAgo = new Date();
+fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
+
+// Format the date in MySQL datetime format (assuming your `date` column is in DATETIME format)
+const changedDate = fortyEightHoursAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+// Convert `changedDate` into epoch time in milliseconds
+const epochTimeMilliseconds = Date.parse(changedDate);
+
+console.log('changed date', changedDate);
+console.log('Epoch time in milliseconds:', epochTimeMilliseconds);
+// Query to fetch data from vehicle_data_sgrmc for the past 48 hours
+const query = `SELECT * FROM vehicle_data_sgrmc WHERE date >= '${epochTimeMilliseconds}'`;
     
       // Fetch data from the database
       db.query(query, (error, results) => {
@@ -518,6 +554,7 @@ emailContent += '</body></html>';
     const yesterdayDate = yesterday.toISOString().slice(0, 10);
     const todayDate = today.toISOString().slice(0, 10);
     
+                setTimeout(() => {
 
     let noDataFound = true; // Flag to track if any data is found
 
@@ -657,7 +694,8 @@ emailContent += '</body></html>';
         // });
       }
     });
-    
+              }, 6000); // Delay for 6000 milliseconds (6 seconds)
+
     console.log("All data in the fuel_theft_table has been processed.");
     
         }

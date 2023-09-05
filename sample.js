@@ -53,25 +53,25 @@ app.use('/travel', travelRoute); // Route handling travel-related requests
 // ... (your existing code)
 
 // Schedule the server to start at 8:56 PM every day
-cron.schedule('53 9 * * *', () => {
+// cron.schedule('37 10 * * *', () => {
 const PORT = process.env.PORT || 5001; // Use the provided port or default to 5000
 
 const server = app.listen(PORT, () => {
   console.log('Server running on port 5001'); // Log a message when the server starts
 
     // Define the routes you want to open from the travelRoute
-    const routesToOpen = [
-      '/travel/fuelTheft',
-      '/travel/fuelFill'
-      // Add more routes as needed
-    ];
+//     const routesToOpen = [
+//       '/travel/fuelTheft',
+//       '/travel/fuelFill'
+//       // Add more routes as needed
+//     ];
 
-    // Loop through the routes and open them in the default web browser
-    routesToOpen.forEach(route => {
-      const url = `http://localhost:5001${route}`;
-      open(url);
-    });
-  });
-}, {
-  timezone: 'Asia/Kolkata', // Set the timezone to Asia/Kolkata (New Delhi, India)
+//     // Loop through the routes and open them in the default web browser
+//     routesToOpen.forEach(route => {
+//       const url = `http://localhost:5001${route}`;
+//       open(url);
+//     });
+//   });
+// }, {
+//   timezone: 'Asia/Kolkata', // Set the timezone to Asia/Kolkata (New Delhi, India)
 });
