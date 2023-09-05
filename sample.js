@@ -1,20 +1,26 @@
 // Import necessary modules
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express'; // Express.js framework for building web applications
 const app = express(); // Create an instance of the Express app
-import bodyParser from'body-parser'; // Middleware for parsing request bodies
-import cors from'cors'; // Middleware for enabling CORS (Cross-Origin Resource Sharing)
-import mysql from'mysql2'; // MySQL database driver
-import session from'express-session'; // Middleware for managing sessions
-import cookieParser from'cookie-parser'; // Middleware for parsing cookies
+import bodyParser from 'body-parser'; // Middleware for parsing request bodies
+import cors from 'cors'; // Middleware for enabling CORS (Cross-Origin Resource Sharing)
+import mysql from 'mysql2'; // MySQL database driver
+import session from 'express-session'; // Middleware for managing sessions
+import cookieParser from 'cookie-parser'; // Middleware for parsing cookies
 import userRoute from './routes/Users.js'; // Import user routes
 import travelRoute from './routes/Travel.js'; // Import travel routes
+import cron from 'node-cron'; // Import node-cron
+import open from 'open';
+
 
 // Create a MySQL database connection pool
 const db = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "root",
-  database: "samplecourierdb"
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE
 });
 
 // Enable CORS with specific configuration
@@ -41,15 +47,34 @@ app.use(session({
   }
 }));
 
-//user- login, get details of user based on id, edit user
+// user- login, get details of user based on id, edit user
 app.use('/user', userRoute); // Route handling user-related requests
 
-//get travel details for each user and all users
+// get travel details for each user and all users
 app.use('/travel', travelRoute); // Route handling travel-related requests
 
-// Start the server
+// ... (your existing code)
+
+// Schedule the server to start at 8:56 PM every day
+cron.schedule('59 7 * * *', () => {
 const PORT = process.env.PORT || 5001; // Use the provided port or default to 5000
 
 const server = app.listen(PORT, () => {
   console.log('Server running on port 5001'); // Log a message when the server starts
+
+    // Define the routes you want to open from the travelRoute
+    const routesToOpen = [
+      '/travel/fuelTheft',
+      '/travel/fuelFill'
+      // Add more routes as needed
+    ];
+
+//     // Loop through the routes and open them in the default web browser
+    routesToOpen.forEach(route => {
+      const url = `http://localhost:5001${route}`;
+      open(url);
+    });
+  });
+}, {
+  timezone: 'Asia/Kolkata', // Set the timezone to Asia/Kolkata (New Delhi, India)
 });

@@ -1,14 +1,15 @@
 //This file contains all the function definitions of user
-
+import dotenv from 'dotenv';
+dotenv.config();
 // Import necessary module
 import mysql from 'mysql2'; // MySQL database driver
 
 // Create a MySQL database connection pool
 const db = mysql.createPool({
-    host: "localhost",
-    user: "root",
-    password: "root",
-    database: "samplecourierdb"
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE
   });
   
 /* Declare a global variable to store the username got from login and continue 

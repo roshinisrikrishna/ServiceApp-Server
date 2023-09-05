@@ -1,4 +1,6 @@
 // Import necessary modules and dependencies
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express'; // Express.js framework for building web applications
 const app = express(); // Create an instance of the Express app
 import mysql from 'mysql2'; // MySQL database driver
@@ -12,10 +14,10 @@ import users from '../controllers/Users.js';
 
 // Create a MySQL database connection pool
 const db = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "root",
-  database: "samplecourierdb"
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE
 });
 
 // Define routes using the router
