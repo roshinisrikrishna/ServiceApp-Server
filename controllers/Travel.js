@@ -1,15 +1,48 @@
 //This file contains all the function definitions of travel
-
+import dotenv from 'dotenv';
+dotenv.config();
 // Import necessary module
 import mysql from 'mysql2'; // MySQL database driver
+import nodemailer from 'nodemailer';
+import schedule from 'node-schedule';
+import PDFDocument from 'pdfkit';
+import fs from 'fs';
+
 
 // Create a MySQL database connection pool
 const db = mysql.createPool({
-    host: "localhost",
-    user: "root",
-    password: "root",
-    database: "samplecourierdb"
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE
   });
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_PASSWORD,
+    },
+  });
+  
+
+  function generatePDF(emailContent) {
+    // Create a PDF document
+    const doc = new PDFDocument();
+    const pdfFileName = 'fuel_report.pdf'; // Name of the PDF file
+  
+    // Pipe the PDF document to a writable stream (create the PDF file)
+    const pdfStream = fs.createWriteStream(pdfFileName);
+    doc.pipe(pdfStream);
+  
+    // Write the email content to the PDF
+    doc.font('Helvetica').fontSize(18).text(emailContent, 50, 50);
+  
+    // Finalize the PDF
+    doc.end();
+  
+    return pdfFileName; // Return the name of the generated PDF file
+  }
   
   const travel = {
     travelTable: (req,res) =>{
@@ -46,87 +79,364 @@ const db = mysql.createPool({
   } 
     },
     fuelTable: (req, res) => {
-        const vehicleData = {};
-      
-        // Query to fetch data from vehicle_data_sgrmc table
-        const query = `SELECT * FROM vehicle_data_sgrmc`;
-      
-        // Fetch data from the database
-        db.query(query, (error, results) => {
-          if (error) {
-            console.error('Error fetching data:', error);
-          } else {
-            // Iterate through the fetched data
-            for (const location of results) {
-              const {
-                date,
-                speed,
-                vehicleId,
-                fuelLitre,
-                digitalInput3
-              } = location;
-      
-              // If vehicle data doesn't exist in the vehicleData object, initialize it
-              if (!vehicleData[vehicleId]) {
-                vehicleData[vehicleId] = {
-                  flag: false,
-                  previousRecordExists: false,
-                  previousStartTime: null,
-                  previousFuelConsumed: 0,
-                  previousEvent: null,
-                };
+          // Calculate the date 48 hours ago from the current date
+const fortyEightHoursAgo = new Date();
+fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 60);
+
+// Format the date in MySQL datetime format (assuming your `date` column is in DATETIME format)
+const changedDate = fortyEightHoursAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+// Convert `changedDate` into epoch time in milliseconds
+const epochTimeMilliseconds = Date.parse(changedDate);
+
+// console.log('changed date', changedDate);
+// console.log('Epoch time in milliseconds:', epochTimeMilliseconds);
+// Query to fetch data from vehicle_data_sgrmc for the past 48 hours
+      // Fetch all distinct vehicleId from vehicle_data_sgrmc
+      const vehicleIdQuery = `SELECT DISTINCT vehicleId FROM vehicle_data_sgrmc WHERE date >= '${epochTimeMilliseconds}'`;
+    
+      db.query(vehicleIdQuery, (error, vehicleIds) => {
+        if (error) {
+          console.error('Error fetching distinct vehicleIds:', error);
+          res.status(500).send({ error: 'Error fetching distinct vehicleIds' });
+        } else {
+          // Iterate through each vehicleId
+          console.log("vehicle id array ",vehicleIds)
+          vehicleIds.forEach((vehicleId, index) => {
+            // Fetch data for each vehicleId
+             const query = `SELECT 
+              date,
+              vehicleId,
+              fuelLitre,
+              speed,
+              digitalInput3
+            FROM
+              vehicle_data_sgrmc 
+            WHERE 
+              vehicleId = '${vehicleId.vehicleId}'`;
+            // const query = `SELECT 
+            //   date,
+            //   vehicleId,
+            //   fuelLitre,
+            //   speed,
+            //   digitalInput3
+            // FROM
+            //   vehicle_data_sgrmc 
+            // WHERE 
+            //   vehicleId = 'TN-42-P-6579'`;
+    
+            db.query(query, (error, data) => {
+              if (error) {
+                console.error('Error fetching data:', error);
+                return;
               }
+    
+              // Process the data for fuel filling
+              processFuelFillingData(data);
+    
+              // If this is the last iteration, send the response
+              if (index === vehicleIds.length - 1) {
+                console.log("Finished processing data");
+                res.send({ message: 'Data processing completed' });
+              }
+            });
+          });
+        }
+      });
       
-              // Extract variables from the vehicle data object
-              const {
-                flag,
-                previousRecordExists,
-                previousStartTime,
-                previousFuelConsumed,
-                previousEvent,
-              } = vehicleData[vehicleId];
-      
-              // Check if digitalInput3 is 'yes' and speed is 0 to detect fuel fill start
-              if (digitalInput3 === 'yes' && speed === 0 && !vehicleData[vehicleId].flag) {
-                // Store initial fuel data
-                const start_time = new Date(date);
-                const initial_fuel = fuelLitre;
-                const end_time = null;
-                const final_fuel = 0;
-                const fuelFilled = 0;
-                const id = vehicleId;
-      
-                // Insert data into the fuelFillLog table
-                const insertQuery = `INSERT INTO fuelFillLog (start_time, initial_fuel, end_time, final_fuel, vehicleId, fuelFilled) VALUES (?, ?, ?, ?, ?, ?)`;
-                const insertValues = [start_time, initial_fuel, end_time, final_fuel, id, fuelFilled];
-      
-                db.query(insertQuery, insertValues, (error, results) => {
-                  if (error) {
-                    console.error('Error inserting fuel fill data:', error);
+            // This block will be executed once all data has been processed
+            
+            const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1); // Yesterday's date
+    const today = new Date();
+    
+    // Convert the dates to MySQL date format (YYYY-MM-DD)
+    const yesterdayDate = yesterday.toISOString().slice(0, 10);
+    const todayDate = today.toISOString().slice(0, 10);
+    
+    // Modify the SQL query to filter records with start_time between yesterday and today
+            
+    
+
+            setTimeout(() => {
+
+            let noDataFound = true; // Flag to track if any data is found
+
+            const fuelList = `SELECT * FROM fuelFillLog WHERE start_time >= '${yesterdayDate}'`;
+            // const fuelList = `SELECT * FROM fuelFillLog `;
+
+            db.query(fuelList, (err, result) => {
+              if (err) {
+                console.error('Error querying fuel_fill table:', err);
+                // Handle the error
+                res.status(500).send('Error querying fuel_fill table');
+              } else {
+                const fuelData = result;
+        
+                if (result.length > 0) {
+                  // Data is found for this vehicle, set the flag to false
+                  // console.log("vehicle data ",result);
+        
+                  noDataFound = false;
+            
+                  // ... Your previous code to construct the table rows ...
+                }
+            
+              // Create an object to store fuel data by vehicleId
+              const fuelDataByVehicle = {};
+            
+              // Organize fuel data by vehicleId
+              fuelData.forEach((entry) => {
+                const { vehicleId, start_time, fuelFilled } = entry;
+            
+                if (!fuelDataByVehicle[vehicleId]) {
+                  fuelDataByVehicle[vehicleId] = [];
+                }
+            
+                fuelDataByVehicle[vehicleId].push({ start_time, fuelFilled });
+              });
+            
+              let emailContent = '<html><body>';
+              if(!noDataFound)
+              {
+                emailContent += '<h2 style="text-decoration: underline;">Fuel Fill Report</h2>';
+                // ...
+
+emailContent += '<table cellpadding="10" style="margin: 0 auto; text-align: center;">'; // Center the table and center-align text
+emailContent += '<tr>';
+emailContent += '<th style="font-size: 18px;">Vehicle</th>';
+emailContent += '<th style="font-size: 18px;">Date</th>';
+emailContent += '<th style="font-size: 18px;">Time</th>';
+emailContent += '<th style="font-size: 18px;">Fuel Filled</th>';
+emailContent += '</tr>';
+
+// Iterate through each vehicle's fuel data
+for (const vehicleId in fuelDataByVehicle) {
+  if (Object.hasOwnProperty.call(fuelDataByVehicle, vehicleId)) {
+    const vehicleData = fuelDataByVehicle[vehicleId];
+
+    // Iterate through each fuel entry for the vehicle and add rows to the table
+    let totalFuelFilled = 0;
+    vehicleData.forEach((entry) => {
+      const { start_time, fuelFilled } = entry;
+      const formattedDateTime = start_time ? formatDateWord(start_time) : 'N/A';
+      const [formattedDate, formattedTime] = formattedDateTime.split(' - ');
+
+      emailContent += '<tr>';
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${vehicleId}</td>`; // Add padding to cells
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${formattedDate}</td>`; // Add padding to cells
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${formattedTime}</td>`; // Add padding to cells
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${fuelFilled.toFixed(2)} litres</td>`; // Add padding to cells
+      emailContent += '</tr>';
+
+      totalFuelFilled += fuelFilled;
+    });
+
+    // Add total fuel filled for the vehicle as a table row
+    emailContent += '<tr>';
+    emailContent += `<td colspan="4" style="padding: 10px; text-align: center; font-weight: bold; font-size: 16px;">Total Fuel Filled on ${formatDateWord(
+      vehicleData[0].start_time
+    )} for ${vehicleId} is ${totalFuelFilled.toFixed(2)} litres</td>`; // Add padding to cells
+    emailContent += '</tr>';
+  }
+}
+
+emailContent += '</table>';
+emailContent += '</body></html>';
+
+            }
+            else
+            {
+              emailContent+= `<h2>No vehicle has filled the fuel on '${yesterdayDate}'</h2>`;
+              emailContent += '</body></html>';
+
+            }
+              // After you have prepared the email content, generate the PDF
+    const pdfFileName = generatePDF(emailContent);
+
+    // Email configuration
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: process.env.EMAIL_TO,
+      subject: 'Fuel Data Report',
+      html: emailContent,
+      // attachments: [
+      //   {
+      //     filename: 'fuel_report.pdf',
+      //     path: pdfFileName,
+      //   },
+      // ],
+    };
+
+    // const emailSchedule = schedule.scheduleJob('0 8 * * *', () => {
+      // Send the email with the PDF attachment
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error('Error sending email:', error);
+        // Handle error sending email
+        res.status(500).send('Error sending email');
+      } else {
+        console.log('Email sent:', info.response);
+        // Handle successful email sending
+        res.status(200).send('Email sent successfully');
+                    // Handle successful email sending
                   }
                 });
-      
+              }
+            });
+          }, 60000);
+    },
+    
+    fuelTheft: (req, res) => {
+      const vehicleData = {};
+
+    // Calculate the date 48 hours ago from the current date
+const fortyEightHoursAgo = new Date();
+fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
+
+// Format the date in MySQL datetime format (assuming your `date` column is in DATETIME format)
+const changedDate = fortyEightHoursAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+// Convert `changedDate` into epoch time in milliseconds
+const epochTimeMilliseconds = Date.parse(changedDate);
+
+// console.log('changed date', changedDate);
+// console.log('Epoch time in milliseconds:', epochTimeMilliseconds);
+// Query to fetch data from vehicle_data_sgrmc for the past 48 hours
+const query = `SELECT * FROM vehicle_data_sgrmc WHERE date >= '${epochTimeMilliseconds}'`;
+
+// const query = `SELECT * FROM vehicle_data_sgrmc`;
+
+    
+      // Fetch data from the database
+      db.query(query, (error, results) => {
+        if (error) {
+          console.error('Error fetching data:', error);
+        } else {
+          // Iterate through the fetched data
+          for (const location of results) {
+            const {
+              date,
+              speed,
+              vehicleId,
+              fuelLitre,
+              distanceCovered
+            } = location;
+    
+            // If vehicle data doesn't exist in the vehicleData object, initialize it
+            if (!vehicleData[vehicleId]) {
+              vehicleData[vehicleId] = {
+                flag: false,
+                previousRecordExists: false,
+                previousStartTime: null,
+                previousFuelConsumed: 0,
+                previousDistance: 0,
+                // previousEvent: null,
+              };
+    }
+
+            // Extract variables from the vehicle data object
+            const {
+              flag,
+              previousRecordExists,
+              previousStartTime,
+              previousFuelConsumed,
+              previousDistance,
+              // previousEvent,
+            } = vehicleData[vehicleId];
+    
+            // Check if digitalInput3 is 'yes' and speed is 0 to detect fuel fill start
+            if (speed === 0 && !vehicleData[vehicleId].flag) {
+              // Store initial fuel data
+              const start_time = new Date(date);
+              const fuel = fuelLitre;
+              const end_time = null;
+              // const speed = speed;
+              const distance = distanceCovered;
+              const fueldiff = 0;
+              const ododiff = 0;
+              const id = vehicleId;
+              const signal = false;
+    
+              // Insert data into the fuel_theft_table table
+              const insertQuery = `INSERT INTO fuel_theft_table (start_time, end_time, fuelLitre, vehicleId, speed, odo, fueldiff, ododiff, theftSignal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+              const insertValues = [start_time, end_time, fuel, id, speed, distance, fueldiff, ododiff, signal,];
+    
+              db.query(insertQuery, insertValues, (error, results) => {
+                if (error) {
+                  console.error('Error inserting fuel fill data:', error);
+  }
+});
+
+// Update vehicle data
+              vehicleData[vehicleId].flag = true;
+              vehicleData[vehicleId].previousRecordExists = true;
+              vehicleData[vehicleId].previousStartTime = start_time;
+              vehicleData[vehicleId].previousFuelConsumed = fuelLitre;
+              vehicleData[vehicleId].previousDistance = distanceCovered;
+
+            } 
+
+          else if (speed > 0 && vehicleData[vehicleId].flag) {
+            // Check if there's a previous record for this vehicleId and start_time
+            if (vehicleData[vehicleId].previousRecordExists && vehicleData[vehicleId].previousStartTime) {
+              // Delete the record for this vehicleId and start_time
+              const deleteQuery = `DELETE FROM fuel_theft_table WHERE vehicleId = ? AND start_time = ?`;
+              const deleteValues = [vehicleId, vehicleData[vehicleId].previousStartTime];
+
+             db.query(deleteQuery, deleteValues, (error, results) => {
+                if (error) {
+                  console.error('Error deleting fuel theft record:', error);
+                }
+              });
+            }
+
+            // Reset vehicle data values
+            vehicleData[vehicleId].flag = false;
+            // vehicleData[vehicleId].previousEvent = 'OFF';
+            vehicleData[vehicleId].previousRecordExists = false;
+            vehicleData[vehicleId].previousStartTime = null;
+            vehicleData[vehicleId].previousFuelConsumed = 0;
+            vehicleData[vehicleId].previousDistance = 0;
+          }
+
+
+            // Check if digitalInput3 is 'no' and flag is true to detect fuel fill end
+            else if (speed === 0 && vehicleData[vehicleId].flag) {
+              // Store end time and calculate fuel filled
+              // const fuel = fuelLitre;
+              const end_time = new Date(date);
+              const fueldiff = vehicleData[vehicleId].previousFuelConsumed - fuelLitre;
+              const ododiff = distanceCovered - vehicleData[vehicleId].previousDistance ;
+              const start_time = vehicleData[vehicleId].previousStartTime;
+              const timeDiffInMilliseconds = end_time - start_time;
+              const timeDiffInMinutes = timeDiffInMilliseconds / (1000 * 60); // 1000 milliseconds per second, 60 seconds per minute
+
+
+         
+              if(fueldiff >= 5 && ododiff < 5 && timeDiffInMinutes <= 5){
+               
                 // Update vehicle data
-                vehicleData[vehicleId].flag = true;
-                vehicleData[vehicleId].previousRecordExists = true;
-                vehicleData[vehicleId].previousStartTime = start_time;
-                vehicleData[vehicleId].previousFuelConsumed = fuelLitre;
-              } 
-              // Check if digitalInput3 is 'no' and flag is true to detect fuel fill end
-              else if (digitalInput3 === 'no' && vehicleData[vehicleId].flag) {
-                // Store end time and calculate fuel filled
-                const end_time = new Date(date);
-                const final_fuel = fuelLitre;
-                const fuelrefill = fuelLitre - vehicleData[vehicleId].previousFuelConsumed;
-                const id = vehicleId;
-      
+               
+            
                 // Update vehicle data
-                vehicleData[vehicleId].flag = false;
-                vehicleData[vehicleId].previousEvent = 'OFF';
-      
-                // Update fuel fill data in the fuelFillLog table
-                const updateQuery = `UPDATE fuelFillLog SET end_time = ?, final_fuel = ?, fuelFilled = ? WHERE vehicleId = ? AND start_time IS NOT NULL AND start_time = ?`;
-                const updateValues = [end_time, fuelLitre, fuelrefill, vehicleId, previousStartTime];
+                // console.log('at fuel diff >= 5');
+                // console.log('vehicle id ', vehicleId);
+                // console.log('start time ', formatDateWord(start_time));
+                // console.log('end time ', formatDateWord(end_time));
+                // console.log('time diff (minutes)', timeDiffInMinutes);
+                // console.log('fuel diff ', fueldiff);
+
+
+
+              const id = vehicleId;
+              const signal = true;
+
+              
+
+              const updateQuery = `UPDATE fuel_theft_table SET end_time = ?, fueldiff = ?, ododiff = ?, theftSignal = ? WHERE vehicleId = ? AND start_time IS NOT NULL AND start_time = ?`;
+                const updateValues = [end_time, fueldiff, ododiff, signal ,vehicleId, previousStartTime];
       
                 db.query(updateQuery, updateValues, (error, results) => {
                   if (error) {
@@ -134,25 +444,306 @@ const db = mysql.createPool({
                   }
                 });
       
+vehicleData[vehicleId].flag = false;
+              // vehicleData[vehicleId].previousEvent = 'OFF';
                 // Reset vehicle data values
                 vehicleData[vehicleId].previousRecordExists = false;
                 vehicleData[vehicleId].previousStartTime = null;
                 vehicleData[vehicleId].previousFuelConsumed = 0;
+vehicleData[vehicleId].previousDistance = 0;
+
+
+              }
+           
+    
+             
+
               }
             }
+
+  
       
             // This block will be executed once all data has been processed
-            console.log("vehicle data ",vehicleData);
-            const fuelList = 'SELECT * FROM fuelFillLog';
-            db.query(fuelList,  (err, result) => {
-              res.send(result);
+            // console.log("vehicle data ",vehicleData);
+            const deleteQuery = 'DELETE FROM fuel_theft_table WHERE theftSignal = 0';
+            db.query(deleteQuery, (err, deleteResult) => {
+              if (err) {
+        console.error('Error deleting data: ' + err.message);
+        return;
+      };
+      console.log('Deleted records where theftSignal is false:', deleteResult.affectedRows);
+
             });      
-            console.log("All data in the vehicle_data table has been processed.");
+            const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1); // Yesterday's date
+    const today = new Date();
+    
+    // Convert the dates to MySQL date format (YYYY-MM-DD)
+    const yesterdayDate = yesterday.toISOString().slice(0, 10);
+    const todayDate = today.toISOString().slice(0, 10);
+    
+                setTimeout(() => {
+
+    let noDataFound = true; // Flag to track if any data is found
+
+    // Modify the SQL query to filter records with start_time between yesterday and today
+    const fuelList = `SELECT * FROM fuel_theft_table WHERE theftSignal = 1 AND start_time >= '${yesterdayDate}'`;
+    db.query(fuelList, (err, result) => {
+      if (err) {
+        console.error('Error querying fuel_theft_table:', err);
+        // Handle the error
+        res.status(500).send('Error querying fuel_theft_table');
+      } else {
+        const fuelData = result;
+
+        if (result.length > 0) {
+          // Data is found for this vehicle, set the flag to false
+          // console.log("vehicle data ",result);
+
+          noDataFound = false;
+    
+          // ... Your previous code to construct the table rows ...
           }
+
+        // Create an object to store fuel data by vehicleId
+        const fuelDataByVehicle = {};
+    
+        // Organize fuel data by vehicleId
+        fuelData.forEach((entry) => {
+          const { vehicleId, start_time, end_time, fueldiff, ododiff } = entry;
+    
+          if (!fuelDataByVehicle[vehicleId]) {
+            fuelDataByVehicle[vehicleId] = [];
+          }
+    
+          fuelDataByVehicle[vehicleId].push({ start_time, end_time, fueldiff, ododiff });
         });
+
+        // Prepare the email content
+        let emailContent = 'Fuel Theft Report\n—------------------\n';
+
+        if(!noDataFound)
+        {
+    // Prepare the email content with an HTML table
+ emailContent = '<html><body>';
+emailContent += '<h2 style="text-decoration: underline;">Fuel Theft Report</h2>';
+// ...
+
+emailContent += '<table cellpadding="10" style="margin: 0 auto; text-align: center;">'; // Center the table and center-align text
+emailContent += '<tr>';
+emailContent += '<th style="font-size: 18px;">Vehicle</th>'; // Increase font size
+// emailContent += '<th>Date</th>';
+emailContent += '<th style="font-size: 18px;">Start Time</th>'; // Increase font size
+emailContent += '<th style="font-size: 18px;">End Time</th>'; // Increase font size
+emailContent += '<th style="font-size: 18px;">Fuel Theft Amount</th>'; // Increase font size
+emailContent += '<th style="font-size: 18px;">Distance Difference</th>'; // Increase font size
+emailContent += '</tr>';
+
+// Iterate through each vehicle's fuel data
+for (const vehicleId in fuelDataByVehicle) {
+  if (Object.hasOwnProperty.call(fuelDataByVehicle, vehicleId)) {
+    const vehicleData = fuelDataByVehicle[vehicleId];
+
+    // Iterate through each fuel entry for the vehicle and add rows to the table
+    let totalFuelFilled = 0;
+    vehicleData.forEach((entry) => {
+      const { start_time, end_time, fueldiff, ododiff } = entry;
+      const formattedStartTime = formatDateWord(start_time);
+      const formattedEndTime = formatDateWord(end_time);
+
+      emailContent += '<tr>';
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${vehicleId}</td>`; // Center-align text and increase font size
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${formattedStartTime}</td>`; // Center-align text and increase font size
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${formattedEndTime}</td>`; // Center-align text and increase font size
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${fueldiff.toFixed(2)} litres</td>`; // Center-align text and increase font size
+      emailContent += `<td style="padding: 10px; text-align: center; font-size: 16px;">${ododiff.toFixed(2)} km</td>`; // Center-align text and increase font size
+      emailContent += '</tr>';
+
+      totalFuelFilled += fueldiff;
+    });
+
+    // Add total fuel filled for the vehicle
+    emailContent += '<tr>';
+    emailContent += `<td colspan="4" style="padding: 10px; text-align: center; font-weight: bold; font-size: 16px;">Total Fuel Filled for ${vehicleId} on ${formatDateWord(
+      vehicleData[0].start_time
+    )} with <span style="font-weight: bold;">${totalFuelFilled.toFixed(2)} litres</span></td>`; // Set the content to bold and increase font size
+    emailContent += '<td></td>'; // Placeholder for Distance Difference since it's not provided in the original data
+    emailContent += '</tr>';
     }
   }
 
+emailContent += '</table>';
+emailContent += '</body></html>';
+
+
+
+            }
+            else
+            {
+              emailContent = '<html><body>';
+              emailContent+= `<h2>No vehicle has stolen the fuel on '${yesterdayDate}'</h2>`;
+              emailContent += '</body></html>';
+
+            }
+       
+
+        // console.log('email content ',emailContent);
+    
+        // After you have prepared the email content, generate the PDF
+        const pdfFileName = generatePDF(emailContent);
+    
+        // Email configuration
+        const mailOptions = {
+          from: process.env.EMAIL_FROM,
+          to: process.env.EMAIL_TO,
+          subject: 'Fuel Theft Data Report',
+          html: emailContent,
+          // attachments: [
+          //   {
+          //     filename: 'fuel_theft_report.pdf',
+          //     path: pdfFileName,
+          //   },
+          // ],
+        };
+    
+        // const emailSchedule = schedule.scheduleJob('0 8 * * *', () => {
+          // Send the email with the PDF attachment
+          transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+              console.error('Error sending email:', error);
+              // Handle error sending email
+              res.status(500).send('Error sending email');
+            } else {
+              console.log('Email sent:', info.response);
+              // Handle successful email sending
+              res.status(200).send('Email sent successfully');
+            }
+          });
+        // });
+      }
+    });
+              }, 6000); // Delay for 6000 milliseconds (6 seconds)
+
+    console.log("All data in the fuel_theft_table has been processed.");
+    
+        }
+      });
+  }  
+
+  
+  }
+
+  // Function to process fuel filling data
+  function processFuelFillingData(data) {
+    let flag = false;
+    let count = 0;
+    let previousFuelConsumed = 0;
+    let previousStartTime = 0;
+    let startFuel = 0;
+    let maxFuel = 0;
+   
+    for (const row of data) {
+      const { date, speed, vehicleId, fuelLitre, digitalInput3 } = row;  
+      // Check if digitalInput3 is 'yes' and speed is 0 to detect fuel fill start
+      if (digitalInput3 === 'yes' && speed === 0 && !flag) {
+        // Store initial fuel data
+        const start_time = new Date(date);
+        const initial_fuel = fuelLitre;
+        const end_time = null;
+        const final_fuel = 0;
+        const fuelFilled = 0;
+        const id = vehicleId;
+
+        // Insert data into the fuelFillLog table
+        const insertQuery = `INSERT INTO fuelFillLog (start_time, initial_fuel, end_time, final_fuel, vehicleId, fuelFilled) VALUES (?, ?, ?, ?, ?, ?)`;
+        const insertValues = [start_time, initial_fuel, end_time, final_fuel, id, fuelFilled];
+
+        db.query(insertQuery, insertValues, (error, results) => {
+          if (error) {
+            console.error('Error inserting fuel fill data:', error);
+          }
+        });
+
+        // Update vehicle data
+        flag = true;
+        count = 0;
+        previousFuelConsumed = fuelLitre;
+        startFuel = fuelLitre;
+        maxFuel = fuelLitre;
+        previousStartTime = start_time;
+        console.log("start fuel ",startFuel);
+        console.log("flag ",flag);
+        console.log("digital input3 ",digitalInput3);
+        
+      } 
+      // Check if digitalInput3 is 'no' and flag is true to detect fuel fill end
+      else if (digitalInput3 === 'no' && flag ) {
+      
+        if(count < 20)
+        {
+          if(maxFuel < fuelLitre)
+        {
+        maxFuel = fuelLitre
+
+       }
+        previousFuelConsumed = fuelLitre;
+        count = count+1;
+        }
+        else{
+          const end_time = new Date(date);
+        const final_fuel = maxFuel;
+        const fuelrefill = maxFuel - startFuel;
+        // const fuelrefill = 0;
+
+        const id = vehicleId;
+          flag = false;
+          // Update fuel fill data in the fuelFillLog table
+        const updateQuery = `UPDATE fuelFillLog SET end_time = ?, final_fuel = ?, fuelFilled = ? WHERE vehicleId = ? AND start_time IS NOT NULL AND start_time = ?`;
+        const updateValues = [end_time, final_fuel, fuelrefill, vehicleId, previousStartTime];
+
+        db.query(updateQuery, updateValues, (error, results) => {
+          if (error) {
+            console.error('Error updating fuel fill data:', error);
+          }
+        });
+        console.log("start fuel ",startFuel);
+        console.log("final fuel ",final_fuel);
+        console.log("refill fuel ",fuelrefill);
+        console.log("flag ",flag);
+        console.log("digital input3 ",digitalInput3);
+        }
+
+        
+
+        
+      }
+    }
+  }
+  
+// Function to format the date as "Month Dayth"
+// Function to format the date as "Date (Month Dayth) - Timing (Hour:Minute am/pm)"
+function formatDateWord(dateString) {
+  const date = new Date(dateString);
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const day = date.getDate();
+  const monthIndex = date.getMonth();
+  const year = date.getFullYear();
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  const formattedHours = hours % 12 || 12;
+
+  const formattedDate = `${monthNames[monthIndex]} ${day}th`;
+  const formattedTime = `${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+
+  return `${formattedDate} - ${formattedTime}`;
+}
   // Function to format a date into the required format
 function formatDate(date) {
   if (date === null) {
@@ -329,7 +920,7 @@ function fetchAndStoreData(userId) {
             previousStartLocation: null,
             previousDistance: 0,
             previousFuelConsumed: 0,
-            previousEvent: null,
+            // previousEvent: null,
           };
         }
 
@@ -339,7 +930,7 @@ function fetchAndStoreData(userId) {
           previousStartLocation,
           previousDistance,
           previousFuelConsumed,
-          previousEvent,
+          // previousEvent,
         } = vehicleData[vehicleId];
 
         /*we consider the trip has started only ignitionStatus is ON and speed id=s greater than 10
@@ -407,7 +998,7 @@ function fetchAndStoreData(userId) {
           previousEvent record to OFF 
           */
           vehicleData[vehicleId].flag = false;
-          vehicleData[vehicleId].previousEvent = 'OFF';
+          // vehicleData[vehicleId].previousEvent = 'OFF';
 
           // Update trip record in the travel_log table
           const updateQuery = `UPDATE travel_log SET end_time = ?, final_location = ?, distance = ?, fuelLitre = ?, mileage = ? WHERE id = ? AND start_time IS NOT NULL AND initial_location = ?`;
